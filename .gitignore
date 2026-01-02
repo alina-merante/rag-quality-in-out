@@ -12,3 +12,7 @@ index/
 
 # Data (PDFs, datasets)
 data/
+
+# Open-source visual builders
+.flowise/
+

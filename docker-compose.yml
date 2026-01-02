@@ -5,3 +5,22 @@ services:
       - "6333:6333"
     volumes:
       - ./.qdrant:/qdrant/storage
+
+  flowise:
+    image: flowiseai/flowise:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+    volumes:
+      - ./.flowise:/root/.flowise
+
+  langflow:
+    image: langflowai/langflow:latest
+    ports:
+      - "7860:7860"
+    environment:
+      - LANGFLOW_HOST=0.0.0.0
+      - LANGFLOW_PORT=7860
+    volumes:
+      - ./.langflow:/app/langflow
