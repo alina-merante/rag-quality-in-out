@@ -1,0 +1,14 @@
+# Environment & secrets
+.env
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Vector DB / runtime artifacts
+.qdrant/
+index/
+
+# Data (PDFs, datasets)
+data/

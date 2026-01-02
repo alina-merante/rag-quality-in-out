@@ -1,0 +1,9 @@
+llama-index
+llama-index-vector-stores-qdrant
+qdrant-client
+pymupdf
+python-dotenv
+streamlit
+ragas
+pandas
+numpy
