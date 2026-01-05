@@ -1,151 +1,163 @@
-# rag-quality-in-out
-# Quality-In, Quality-Out — RAG Optimizer
+# rag-quality-in-out  
+## Quality-In, Quality-Out — RAG Optimizer
 
 This repository implements a **Retrieval-Augmented Generation (RAG) pipeline**
-designed to ensure **grounded, traceable, and evaluable answers** over complex PDF documents.
+focused on **grounded, traceable answers** over complex PDF documents.
 
-The project focuses on the principle of **“Quality-In, Quality-Out”**:
-high-quality answers are only possible if documents are ingested, structured,
-retrieved, and evaluated correctly.
+The project follows the principle of **Quality-In, Quality-Out**:
+accurate answers require structured ingestion, explicit grounding, and evaluation.
 
-The system is built as a **prototyping and evaluation sandbox**, using open-source
-components and low-code frameworks, with a strong emphasis on **grounding and metrics**.
-
-## 🎯 Objectives
-
-- Build a document ingestion pipeline that **understands structure**, not just text
-- Ensure every answer is **explicitly grounded** in source documents
-- Provide **page-level citations** that are human-verifiable
-- Measure RAG quality with **automated metrics (RAGAS)** instead of assumptions
-- Compare local/open-source approaches with **cloud-based LLM evaluation**
+The system is designed as a **prototyping and evaluation sandbox**, using
+open-source components and adapting to real-world constraints
+(e.g. no paid APIs, limited resources).
 
 
-## 🧱 Architecture Overview
+## 🎯 Goals
 
-PDF Documents (WHO)
-↓
-Table-aware Ingestion (PyMuPDF)
-↓
-Vector Store (Qdrant)
-↓
-Retriever (LlamaIndex)
-↓
-Streamlit UI (Grounded Answers + Citations)
-↓
-RAGAS Evaluation (Faithfulness, Answer Relevance)
+- Structure-aware document ingestion (text + tables)
+- Page-level, human-verifiable citations
+- Transparent RAG outputs (retrieved extracts, not hallucinations)
+- Automated evaluation design with RAGAS
+- Fully runnable pipeline without paid embeddings
 
 
-### Design Principles
+## 🧱 Architecture
 
-- **Structure-aware ingestion**: text and tables are treated as different semantic units
-- **Explicit grounding**: every retrieved chunk carries document and page metadata
-- **Transparency over fluency**: answers are shown as grounded extracts
-- **Evaluation-first mindset**: RAG quality is measured, not assumed
-
-
-## 📄 Document Ingestion & Deep Understanding
-
-### Text and Table Separation
-
-PDFs are ingested using **PyMuPDF**.
-
-For each page:
-- Narrative text is indexed as `content_type = "text"`
-- Tables are detected with `find_tables()`, converted to Markdown, and indexed as
-  `content_type = "table"`
-
-Each indexed node includes:
-- `source_document`
-- `page_number`
-- `content_type` (`text` or `table`)
-
-This enables:
-- correct identification of tables as structured data,
-- explicit retrieval of tabular information,
-- precise citation of the source page.
-
-This step addresses a common RAG failure mode, where tables are flattened into text
-and lose semantic structure.
+PDF (WHO)
+→ PyMuPDF ingestion (text + tables)
+→ Qdrant vector store
+→ LlamaIndex retriever
+→ Streamlit UI (grounded extracts + citations)
+→ RAGAS evaluation (design + integration)
 
 
-## 🔎 Retrieval Strategy
+## 📄 Ingestion & Grounding
 
-Retrieval is implemented with **LlamaIndex** on top of **Qdrant**.
+- Text and tables are indexed separately (`content_type = text | table`)
+- Tables are extracted with PyMuPDF and converted to Markdown
+- Each chunk carries:
+  - `source_document`
+  - `page_number`
+  - `content_type`
 
-Key aspects:
-- High-recall retrieval (retrieving more candidates than shown)
-- Optional **table-first retrieval** via UI toggle
-- Post-retrieval sorting by **page number** for readability and traceability
-
-This avoids relying solely on vector similarity, which often favors narrative text
-over structured tables.
-
-
-## 🖥️ Streamlit UI — Grounded Answers
-
-The Streamlit interface is designed to **make grounding explicit**.
-
-### Features
-
-- Answers are shown as **retrieved extracts**, not hallucinated summaries
-- Each chunk is labeled as `[TEXT]` or `[TABLE]`
-- Results are ordered by source page
-- A dedicated **Sources** section shows citations
-
-### Citations
-
-For every cited page:
-- 📄 **Local PDF** is available via a download button  
-  (Streamlit does not serve static files directly)
-- 🌐 **Official web PDF** opens the authoritative source at the exact page
-
-This allows instant human verification of the answer.
+This ensures **explicit grounding and correct citation**.
 
 
-## 📊 Automated Evaluation with RAGAS
+## 🧠 Embeddings
 
-The project includes a complete **RAGAS evaluation pipeline**.
+To keep the pipeline fully runnable without external services, the project uses:
 
-### Metrics
+- **HashEmbedding** (custom, offline, deterministic)
 
-- **Faithfulness**  
-  Measures whether the answer is supported by the retrieved contexts.
-- **Answer Relevance**  
-  Measures how well the answer addresses the question.
-
-### Evaluation Pipeline
-
-- Questions are defined in `eval/questions.csv`
-- Contexts are retrieved using the same RAG pipeline as the UI
-- An LLM is used as a judge to compute the metrics
-- Results are exported as CSV to the `reports/` directory
-
-Script:
-```bash
-python src/eval_ragas.py
+This allows end-to-end execution and focuses the exercise on **RAG quality and architecture**, not model access.
 
 
-Note on Execution
+## 🖥️ Streamlit UI
 
-At the time of submission, the evaluation pipeline executes correctly up to the LLM
-call, but metric computation could not be completed due to insufficient OpenAI API quota.
+- Displays retrieved extracts (TEXT / TABLE)
+- Orders results by source page
+- Provides:
+  - 📄 local PDF download
+  - 🌐 official WHO web PDF link (page-level)
 
-This limitation is external to the implementation.
-Once quota is available, the pipeline produces metric scores without any code changes.
 
-The evaluation design and integration are fully implemented and documented.
+## 📊 Evaluation (RAGAS)
 
-🚀 How to Run
-1. Start the Vector Store
+- Faithfulness
+- Answer Relevance
+
+The evaluation pipeline is fully implemented.
+Metric execution requires an OpenAI API key with available quota.
+
+## 🚀 How to Run
+
+1. Start required services (Vector Store)
+
+From the project root:
+
 docker compose up -d
 
-2. Ingest Documents
-python src/ingest.py
 
-3. Run the UI
+This starts Qdrant, used as the vector store.
+
+Verify it is running:
+
+docker ps
+
+2. Prepare input documents
+
+Create the input folder and download the sample WHO PDF:
+
+mkdir -p data/samples
+wget -O data/samples/worldhealthstatistics_2022.pdf \
+https://cdn.who.int/media/docs/default-source/gho-documents/world-health-statistic-reports/worldhealthstatistics_2022.pdf
+
+3. Run document ingestion (Quality-In)
+
+Ingest the PDF with structure-aware parsing (text + tables):
+
+python -m src.ingest
+
+
+Expected output:
+
+[ingest] worldhealthstatistics_2022.pdf: text_pages=..., tables=...
+[ok] Indexed XXX documents into 'docs' at http://localhost:6333
+
+
+At this point:
+
+documents are parsed,
+
+tables are preserved,
+
+all chunks are indexed with page-level metadata.
+
+4. Query the RAG pipeline via CLI (optional)
+
+You can test retrieval and grounding directly from the terminal:
+
+QUESTION="life expectancy" python -m src.rag_answer
+
+
+This prints:
+
+grounded text/table extracts
+
+page-level citations
+
+5. Launch the UI (Quality-Out)
+
+Start the Streamlit application:
+
 streamlit run src/app.py --server.address 0.0.0.0 --server.port 8501
 
-4. (Optional) Run Evaluation
+
+Open the URL shown in the terminal.
+
+The UI allows you to:
+
+ask questions,
+
+inspect retrieved chunks (TEXT / TABLE),
+
+verify sources via local PDF download or official WHO web links.
+
+6. (Optional) Run automated evaluation with RAGAS
+
+If an OpenAI API key with available quota is configured:
+
+export OPENAI_API_KEY=your_key_here
 python src/eval_ragas.py
 
-Requires a valid OPENAI_API_KEY.
+
+This computes:
+
+Faithfulness
+
+Answer Relevance
+
+Results are exported to the reports/ directory.
+
+Note: At the time of submission, metric execution may be limited by API quota.
+The evaluation pipeline is fully implemented and requires no code changes once quota is available.
