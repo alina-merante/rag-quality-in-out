@@ -7,17 +7,18 @@ import streamlit as st
 from llama_index.core import StorageContext, VectorStoreIndex, Settings
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+
+# Streamlit runs this file with `src/` as the script folder, so import local module directly.
+from hash_embedding import HashEmbedding
+
 
 # --------------------------------------------------
 # Setup
 # --------------------------------------------------
 load_dotenv()
 
-# Local embeddings (same as ingestion/query scripts)
-Settings.embed_model = HuggingFaceEmbedding(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
+# Offline embedding (must match ingestion + rag_answer)
+Settings.embed_model = HashEmbedding(dim=384)
 
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "docs")
@@ -29,18 +30,20 @@ SOURCE_PDF_URL = os.getenv(
     "world-health-statistic-reports/worldhealthstatistics_2022.pdf",
 )
 
+
 # --------------------------------------------------
 # UI
 # --------------------------------------------------
-st.set_page_config(page_title="WHO RAG Demo (Citations)", layout="wide")
-st.title("WHO RAG Demo — Clickable Citations")
+st.set_page_config(page_title="RAG Demo (Citations)", layout="wide")
+st.title("RAG Demo — Grounded Extracts + Citations")
 
 st.write(
-    "This demo retrieves relevant chunks from the WHO (World Health Organization) PDF and shows grounded extracts "
-    "with **page-level citations**. For each source you get:\n"
-    "- a **download button** for the local PDF (Streamlit cannot open local files via plain links), and\n"
-    "- a **clickable web link** to the official WHO PDF at the correct page.\n\n"
-    "Tip: enable **Prefer tables** to visualize extracted tables (content_type=table)."
+    "This demo retrieves relevant chunks from the ingested PDF(s) in Qdrant and shows grounded extracts "
+    "with **page-level citations**.\n\n"
+    "For each source you get:\n"
+    "- a **local PDF download** button, and\n"
+    "- a **web link** to the official WHO PDF at the correct page.\n\n"
+    "Tip: enable **Prefer tables** to prioritize extracted tables (content_type=table) without hiding text results."
 )
 
 question = st.text_input("Question", value="life expectancy")
@@ -50,34 +53,49 @@ prefer_tables = st.checkbox("Prefer tables", value=False)
 ask = st.button("Ask")
 
 if ask:
+    # Connect to Qdrant
     client = QdrantClient(url=QDRANT_URL, prefer_grpc=False, timeout=60.0)
     vector_store = QdrantVectorStore(client=client, collection_name=COLLECTION_NAME)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
+    # Build index wrapper around existing vector store
     index = VectorStoreIndex.from_vector_store(
-        vector_store=vector_store, storage_context=storage_context
+        vector_store=vector_store,
+        storage_context=storage_context,
     )
 
-    # Retrieve more than needed, then filter/slice (helps pull in tables)
-    retriever = index.as_retriever(similarity_top_k=top_k * 8)
+    # Retrieve more than needed, then re-rank (helps pull in tables)
+    raw_k = top_k * (40 if prefer_tables else 12)
+    retriever = index.as_retriever(similarity_top_k=raw_k)
     nodes = retriever.retrieve(question)
 
-    # DEBUG: show content_type distribution in retrieved nodes (before filtering)
-    types = [(n.node.metadata or {}).get("content_type", "MISSING") for n in nodes]
-    st.caption(f"Retrieved types (raw): { {t: types.count(t) for t in set(types)} }")
+    # Split by type
+    tables = [n for n in nodes if (n.node.metadata or {}).get("content_type") == "table"]
+    texts = [n for n in nodes if (n.node.metadata or {}).get("content_type") != "table"]
 
-    # Optional: prefer tables
+    # Prefer tables = re-rank tables first, but NEVER filter out text completely
     if prefer_tables:
-        nodes = [n for n in nodes if (n.node.metadata or {}).get("content_type") == "table"]
+        nodes = tables + texts
+    else:
+        nodes = texts + tables  # keep text first by default
 
-    # Sort by page number (ascending) for readability
-    nodes = sorted(nodes, key=lambda n: int((n.node.metadata or {}).get("page_number", 1_000_000_000)))
+    # Sort for readability (tables first if prefer_tables, then page number)
+    nodes = sorted(
+        nodes,
+        key=lambda n: (
+            0 if (prefer_tables and (n.node.metadata or {}).get("content_type") == "table") else 1,
+            int((n.node.metadata or {}).get("page_number", 1_000_000_000)),
+        ),
+    )
 
-    # Keep only the requested amount after filtering/sorting
+    # Keep only top_k after re-ranking/sorting
     nodes = nodes[:top_k]
 
+    # Debug counters (useful to understand what retrieval returned)
+    st.caption(f"Retrieved (raw): total={len(texts)+len(tables)} | tables={len(tables)} | text={len(texts)}")
+
     if not nodes:
-        st.warning("No results. Try disabling 'Prefer tables' or changing the question.")
+        st.error("No results at all. Check that ingestion ran and Qdrant collection contains points.")
         st.stop()
 
     # --------------------------------------------------
@@ -97,7 +115,7 @@ if ask:
 
         tag = f" [{ctype.upper()}]"
         extra = f" (table_id={table_id})" if (ctype == "table" and table_id is not None) else ""
-        with st.expander(f"Chunk #{i}{tag} — {src}  p.{page}"):
+        with st.expander(f"Chunk #{i}{tag} — {src} p.{page}{extra}"):
             st.write(content)
 
     # --------------------------------------------------
@@ -120,7 +138,7 @@ if ask:
 
         col1, col2 = st.columns(2)
 
-        # Local PDF: download button (works reliably in Streamlit/Codespaces)
+        # Local PDF download
         with col1:
             local_path = Path("data/samples") / src
             if src and local_path.exists():
@@ -135,7 +153,7 @@ if ask:
             else:
                 st.write("Local PDF not available")
 
-        # Web PDF: clickable link with page anchor
+        # Web PDF link at page
         with col2:
             web_link = f"{SOURCE_PDF_URL}#page={page}"
             st.markdown(f"[🌐 WHO Web PDF — open at page {page}]({web_link})")

@@ -10,23 +10,22 @@ os.environ["HTTPX_USE_HTTP2"] = "0"
 from llama_index.core import Document, VectorStoreIndex, StorageContext, Settings
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+
+from src.hash_embedding import HashEmbedding
 
 load_dotenv()
 
-# Local embeddings (no OpenAI key needed)
-Settings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+# Offline embeddings (no HuggingFace/OpenAI downloads needed)
+Settings.embed_model = HashEmbedding(dim=384)
 
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "docs")
 
-# Optional: official URL for web citations
 SOURCE_PDF_URL = os.getenv(
     "SOURCE_PDF_URL",
     "https://cdn.who.int/media/docs/default-source/gho-documents/"
     "world-health-statistic-reports/worldhealthstatistics_2022.pdf",
 )
-
 
 def table_to_markdown(table) -> str:
     """
