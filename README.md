@@ -69,7 +69,19 @@ This allows end-to-end execution and focuses the exercise on **RAG quality and a
 The evaluation pipeline is fully implemented.
 Metric execution requires an OpenAI API key with available quota.
 
-## 🚀 How to Run
+How to Run
+
+0. Set up the Python environment
+
+From the project root, create and activate a virtual environment:
+
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+
+The virtual environment is intentionally not committed.
+Dependencies are fully reproducible via requirements.txt.
 
 1. Start required services (Vector Store)
 
@@ -109,7 +121,7 @@ At this point:
 
 documents are parsed,
 
-tables are preserved,
+tables are preserved as structured content,
 
 all chunks are indexed with page-level metadata.
 
@@ -122,9 +134,9 @@ QUESTION="life expectancy" python -m src.rag_answer
 
 This prints:
 
-grounded text/table extracts
+grounded text and table extracts,
 
-page-level citations
+page-level citations.
 
 5. Launch the UI (Quality-Out)
 
@@ -159,5 +171,6 @@ Answer Relevance
 
 Results are exported to the reports/ directory.
 
-Note: At the time of submission, metric execution may be limited by API quota.
+Note
+At the time of submission, metric execution may be limited by API quota.
 The evaluation pipeline is fully implemented and requires no code changes once quota is available.
